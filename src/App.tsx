@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser, signInWithRedirect } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where, orderBy, serverTimestamp, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -284,11 +284,17 @@ const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
+  const handleLogin = async (useRedirect = false) => {
     setLoading(true);
     setError(null);
     try {
       const provider = new GoogleAuthProvider();
+      
+      if (useRedirect) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       const isAdminEmail = user.email === 'dionathandm25@gmail.com';
@@ -332,7 +338,7 @@ const LoginPage = () => {
       let message = 'Ocorreu um erro ao fazer login. Tente novamente.';
       
       if (err.code === 'auth/popup-blocked') {
-        message = 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site.';
+        message = 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site ou use o método alternativo abaixo.';
       } else if (err.code === 'auth/popup-closed-by-user') {
         message = 'O login foi cancelado.';
       } else if (err.message && err.message.includes('FirestoreErrorInfo')) {
@@ -368,20 +374,30 @@ const LoginPage = () => {
             </div>
           )}
 
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-4 py-4 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all disabled:opacity-50"
-          >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-                ENTRAR COM GOOGLE
-              </>
-            )}
-          </button>
+          <div className="space-y-4">
+            <button
+              onClick={() => handleLogin(false)}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-4 py-4 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all disabled:opacity-50"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+                  ENTRAR COM GOOGLE
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => handleLogin(true)}
+              disabled={loading}
+              className="w-full py-3 bg-zinc-900 text-zinc-400 text-xs font-bold rounded-xl hover:text-white transition-colors border border-white/5"
+            >
+              PROBLEMAS COM POPUP? USE O REDIRECIONAMENTO
+            </button>
+          </div>
           
           <p className="mt-8 text-center text-xs text-zinc-600 uppercase tracking-widest font-bold">
             Segurança garantida por Google Cloud
@@ -618,54 +634,68 @@ const AppContent = () => {
     };
     testConnection();
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let profileUnsub: (() => void) | null = null;
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
+      
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
       if (firebaseUser) {
         const isAdminEmail = firebaseUser.email === 'dionathandm25@gmail.com';
-        try {
-          // Listen to profile changes
-          const profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), async (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data() as UserProfile;
-              setProfile(data);
-              if (data.role === 'admin') setActiveTab('dashboard');
-              
-              // Auto-fix admin role if missing
-              if (isAdminEmail && data.role !== 'admin') {
+        
+        profileUnsub = onSnapshot(doc(db, 'users', firebaseUser.uid), async (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as UserProfile;
+            setProfile(data);
+            if (data.role === 'admin') setActiveTab('dashboard');
+            
+            if (isAdminEmail && data.role !== 'admin') {
+              try {
                 await setDoc(doc(db, 'users', firebaseUser.uid), {
                   role: 'admin',
                   status: 'active'
                 }, { merge: true });
+              } catch (e) {
+                console.error("Error auto-fixing admin role:", e);
               }
-            } else if (isAdminEmail) {
-              // Create admin profile if it doesn't exist (e.g. first login)
-              await setDoc(doc(db, 'users', firebaseUser.uid), {
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName,
-                photoURL: firebaseUser.photoURL,
-                role: 'admin',
-                status: 'active',
-                createdAt: serverTimestamp()
-              });
             }
-            setLoading(false);
-          }, (err) => {
-            handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
-            setLoading(false);
-          });
-          return () => profileUnsub();
-        } catch (error) {
-          console.error('Error fetching profile:', error);
+          } else {
+            setProfile(null);
+            if (isAdminEmail) {
+              try {
+                await setDoc(doc(db, 'users', firebaseUser.uid), {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  displayName: firebaseUser.displayName,
+                  photoURL: firebaseUser.photoURL,
+                  role: 'admin',
+                  status: 'active',
+                  createdAt: serverTimestamp()
+                });
+              } catch (e) {
+                console.error("Error creating admin profile:", e);
+              }
+            }
+          }
           setLoading(false);
-        }
+        }, (err) => {
+          handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+          setLoading(false);
+        });
       } else {
         setProfile(null);
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (profileUnsub) profileUnsub();
+    };
   }, []);
 
   if (loading) return <LoadingScreen />;
