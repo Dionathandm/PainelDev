@@ -281,10 +281,12 @@ const LandingPage = () => {
 
 const LoginPage = () => {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleLogin = async () => {
     setLoading(true);
+    setError(null);
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -292,27 +294,57 @@ const LoginPage = () => {
       const isAdminEmail = user.email === 'dionathandm25@gmail.com';
 
       // Check if user profile exists
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          role: isAdminEmail ? 'admin' : 'client',
-          status: isAdminEmail ? 'active' : 'pending',
-          createdAt: serverTimestamp()
-        });
-      } else if (isAdminEmail && userDoc.data().role !== 'admin') {
+      let userDoc;
+      try {
+        userDoc = await getDoc(doc(db, 'users', user.uid));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+      }
+
+      if (!userDoc?.exists()) {
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            role: isAdminEmail ? 'admin' : 'client',
+            status: isAdminEmail ? 'active' : 'pending',
+            createdAt: serverTimestamp()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+        }
+      } else if (isAdminEmail && userDoc.data()?.role !== 'admin') {
         // Fix for existing admin user who was created as client
-        await setDoc(doc(db, 'users', user.uid), {
-          role: 'admin',
-          status: 'active'
-        }, { merge: true });
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            role: 'admin',
+            status: 'active'
+          }, { merge: true });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+        }
       }
       navigate('/painel');
-    } catch (error) {
-      console.error('Login error:', error);
+    } catch (err: any) {
+      console.error('Login error:', err);
+      let message = 'Ocorreu um erro ao fazer login. Tente novamente.';
+      
+      if (err.code === 'auth/popup-blocked') {
+        message = 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site.';
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        message = 'O login foi cancelado.';
+      } else if (err.message && err.message.includes('FirestoreErrorInfo')) {
+        try {
+          const info = JSON.parse(err.message);
+          message = `Erro de permissão: ${info.error}`;
+        } catch {
+          message = err.message;
+        }
+      }
+      
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -329,6 +361,12 @@ const LoginPage = () => {
             <h1 className="text-2xl md:text-3xl font-black tracking-tighter mb-2">BEM-VINDO DE VOLTA</h1>
             <p className="text-zinc-500 text-sm">Acesse seu painel exclusivo Dionathan Dev.</p>
           </div>
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm text-center">
+              {error}
+            </div>
+          )}
 
           <button
             onClick={handleLogin}
@@ -364,7 +402,7 @@ const WaitingPage = ({ profile }: { profile: UserProfile }) => {
     const q = query(collection(db, 'payments'), where('clientUid', '==', profile.uid));
     const unsub = onSnapshot(q, (snap) => {
       setHasPaid(!snap.empty);
-    });
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'payments'));
     return () => unsub();
   }, [profile.uid]);
 
@@ -612,7 +650,10 @@ const AppContent = () => {
               });
             }
             setLoading(false);
-          }, (err) => handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`));
+          }, (err) => {
+            handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+            setLoading(false);
+          });
           return () => profileUnsub();
         } catch (error) {
           console.error('Error fetching profile:', error);
