@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user information and access level.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["client", "admin"] },
+        "status": { "type": "string", "enum": ["pending", "active", "blocked"] },
+        "company": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "status"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Stores project details and status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientUid": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["analysis", "in-progress", "completed", "paused"] },
+        "plan": { "type": "string", "enum": ["start", "pro"] },
+        "price": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientUid", "title", "status", "plan"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Stores chat messages.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "chatId": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chatId", "senderUid", "text", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Stores payment records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientUid": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed"] },
+        "pixKey": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientUid", "amount", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles indexed by UID."
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Projects created by clients."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a specific chat."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payment records for client projects."
+    }
+  }
+}

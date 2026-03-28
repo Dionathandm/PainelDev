@@ -1,0 +1,156 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - displayName: string
+    //   - photoURL: string (uri format)
+    //   - role: string (required, enum: ['client', 'admin'])
+    //   - status: string (required, enum: ['pending', 'active', 'blocked'])
+    //   - company: string
+    //   - phone: string
+    //   - createdAt: timestamp
+    //
+    // Collection: projects
+    // Document ID: {projectId}
+    // Fields:
+    //   - clientUid: string (required)
+    //   - title: string (required)
+    //   - description: string
+    //   - status: string (required, enum: ['analysis', 'in-progress', 'completed', 'paused'])
+    //   - plan: string (required, enum: ['start', 'pro'])
+    //   - price: number
+    //   - createdAt: timestamp
+    //   - updatedAt: timestamp
+    //
+    // Collection: chats/{chatId}/messages
+    // Document ID: {messageId}
+    // Fields:
+    //   - chatId: string (required)
+    //   - senderUid: string (required)
+    //   - text: string (required)
+    //   - createdAt: timestamp
+    //
+    // Collection: payments
+    // Document ID: {paymentId}
+    // Fields:
+    //   - clientUid: string (required)
+    //   - amount: number (required)
+    //   - status: string (required, enum: ['pending', 'confirmed'])
+    //   - pixKey: string
+    //   - createdAt: timestamp
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          request.auth.token.email == "dionathandm25@gmail.com");
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'status']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             isValidEmail(data.email) &&
+             data.role in ['client', 'admin'] &&
+             data.status in ['pending', 'active', 'blocked'] &&
+             (!('displayName' in data) || data.displayName is string) &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('company' in data) || data.company is string) &&
+             (!('phone' in data) || data.phone is string);
+    }
+
+    function isValidProject(data) {
+      return hasRequiredFields(['clientUid', 'title', 'status', 'plan']) &&
+             data.clientUid is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.status in ['analysis', 'in-progress', 'completed', 'paused'] &&
+             data.plan in ['start', 'pro'] &&
+             (!('description' in data) || (data.description is string && data.description.size() < 2000)) &&
+             (!('price' in data) || data.price is number);
+    }
+
+    function isValidMessage(data) {
+      return hasRequiredFields(['chatId', 'senderUid', 'text', 'createdAt']) &&
+             data.chatId is string &&
+             data.senderUid == request.auth.uid &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 5000;
+    }
+
+    function isValidPayment(data) {
+      return hasRequiredFields(['clientUid', 'amount', 'status']) &&
+             data.clientUid is string &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['pending', 'confirmed'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'client' && request.resource.data.status == 'pending';
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role && request.resource.data.status == resource.data.status) || isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated() && (resource.data.clientUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidProject(request.resource.data) && (request.resource.data.clientUid == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && isValidProject(request.resource.data) && (resource.data.clientUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      // ChatId is usually the clientUid for 1:1 chats with admin
+      allow read: if isAuthenticated() && (chatId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data) && (chatId == request.auth.uid || isAdmin());
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (resource.data.clientUid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidPayment(request.resource.data) && (request.resource.data.clientUid == request.auth.uid || isAdmin());
+      allow update: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
