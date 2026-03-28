@@ -459,6 +459,7 @@ const Sidebar = ({ role, activeTab, onTabChange, isOpen, onClose }: { role: stri
     { id: 'settings', label: 'Configurações', icon: Settings },
   ] : [
     { id: 'overview', label: 'Meu Projeto', icon: LayoutDashboard },
+    { id: 'ai-landing', label: 'Criar Landing Page', icon: Zap },
     { id: 'messages', label: 'Mensagens', icon: MessageSquare },
     { id: 'billing', label: 'Financeiro', icon: CreditCard },
     { id: 'profile', label: 'Meu Perfil', icon: Settings },
@@ -747,6 +748,69 @@ const ClientPanel = ({ activeTab, profile }: { activeTab: string, profile: UserP
                 )}>{step.label}</span>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === 'ai-landing') {
+    return (
+      <div className="space-y-8">
+        <header>
+          <h1 className="text-2xl md:text-3xl font-black tracking-tighter mb-2 uppercase">CRIAR LANDING PAGE COM IA</h1>
+          <p className="text-zinc-500 text-sm">Gere páginas profissionais em segundos usando inteligência artificial.</p>
+        </header>
+
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="p-8 bg-zinc-900 border border-white/5 rounded-[40px] relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Zap className="w-32 h-32 text-green-500" />
+            </div>
+            
+            <h2 className="text-xl font-black mb-4">GERADOR DE PÁGINAS IA</h2>
+            <p className="text-zinc-400 text-sm leading-relaxed mb-8">
+              Nossa IA cria descrições persuasivas, páginas de agendamento, localização estratégica e layouts específicos para diversos nichos:
+            </p>
+            
+            <ul className="space-y-3 mb-10">
+              {[
+                'Páginas para Advogados',
+                'Apps de Veículos & Vendas',
+                'Agendamento Online Inteligente',
+                'Localização & Mapas Dinâmicos',
+                'Descrições de Produtos com IA'
+              ].map((item, i) => (
+                <li key={i} className="flex items-center gap-3 text-xs font-bold text-zinc-300 uppercase tracking-widest">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+
+            <a 
+              href="https://links-pro-eight.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-3 px-8 py-4 bg-green-500 text-black font-black rounded-2xl hover:scale-105 transition-transform"
+            >
+              ACESSAR GERADOR IA <ChevronRight className="w-5 h-5" />
+            </a>
+          </div>
+
+          <div className="space-y-4">
+            <div className="p-6 bg-zinc-900/50 border border-white/5 rounded-3xl">
+              <h3 className="font-bold mb-2 text-white">Como funciona?</h3>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Ao clicar no botão, você será redirecionado para nossa ferramenta externa de IA. Lá você poderá descrever seu negócio e a IA montará a estrutura completa da sua Landing Page.
+              </p>
+            </div>
+            <div className="p-6 bg-zinc-900/50 border border-white/5 rounded-3xl">
+              <h3 className="font-bold mb-2 text-white">Suporte Premium</h3>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Se precisar de ajuda para integrar a página gerada ao seu domínio ou sistema, entre em contato via chat.
+              </p>
+            </div>
           </div>
         </div>
       </div>
