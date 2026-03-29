@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser, signInWithRedirect } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where, orderBy, serverTimestamp, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -284,6 +284,84 @@ const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          await handlePostLogin(result.user);
+        }
+      } catch (err: any) {
+        console.error('Redirect result error:', err);
+        handleLoginError(err);
+      }
+    };
+    checkRedirect();
+  }, []);
+
+  const handlePostLogin = async (user: FirebaseUser) => {
+    const isAdminEmail = user.email === 'dionathandm25@gmail.com';
+
+    // Check if user profile exists
+    let userDoc;
+    try {
+      userDoc = await getDoc(doc(db, 'users', user.uid));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+    }
+
+    if (!userDoc?.exists()) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          role: isAdminEmail ? 'admin' : 'client',
+          status: isAdminEmail ? 'active' : 'pending',
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+      }
+    } else if (isAdminEmail && userDoc.data()?.role !== 'admin') {
+      // Fix for existing admin user who was created as client
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          role: 'admin',
+          status: 'active'
+        }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+      }
+    }
+    navigate('/painel');
+  };
+
+  const handleLoginError = (err: any) => {
+    console.error('Login error details:', err);
+    let message = 'Ocorreu um erro ao fazer login. Tente novamente.';
+    
+    if (err.code === 'auth/popup-blocked') {
+      message = 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site ou use o método alternativo abaixo.';
+    } else if (err.code === 'auth/popup-closed-by-user') {
+      message = 'O login foi cancelado.';
+    } else if (err.code === 'auth/unauthorized-domain') {
+      message = 'Este domínio não está autorizado no Firebase. Por favor, adicione este domínio (run.app) na lista de domínios autorizados no console do Firebase.';
+    } else if (err.message && err.message.includes('FirestoreErrorInfo')) {
+      try {
+        const info = JSON.parse(err.message);
+        message = `Erro de permissão: ${info.error}`;
+      } catch {
+        message = err.message;
+      }
+    } else if (err.message) {
+      message = `Erro: ${err.message}`;
+    }
+    
+    setError(message);
+  };
+
   const handleLogin = async (useRedirect = false) => {
     setLoading(true);
     setError(null);
@@ -296,61 +374,9 @@ const LoginPage = () => {
       }
 
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      const isAdminEmail = user.email === 'dionathandm25@gmail.com';
-
-      // Check if user profile exists
-      let userDoc;
-      try {
-        userDoc = await getDoc(doc(db, 'users', user.uid));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
-      }
-
-      if (!userDoc?.exists()) {
-        try {
-          await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            role: isAdminEmail ? 'admin' : 'client',
-            status: isAdminEmail ? 'active' : 'pending',
-            createdAt: serverTimestamp()
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
-        }
-      } else if (isAdminEmail && userDoc.data()?.role !== 'admin') {
-        // Fix for existing admin user who was created as client
-        try {
-          await setDoc(doc(db, 'users', user.uid), {
-            role: 'admin',
-            status: 'active'
-          }, { merge: true });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
-        }
-      }
-      navigate('/painel');
+      await handlePostLogin(result.user);
     } catch (err: any) {
-      console.error('Login error:', err);
-      let message = 'Ocorreu um erro ao fazer login. Tente novamente.';
-      
-      if (err.code === 'auth/popup-blocked') {
-        message = 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site ou use o método alternativo abaixo.';
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        message = 'O login foi cancelado.';
-      } else if (err.message && err.message.includes('FirestoreErrorInfo')) {
-        try {
-          const info = JSON.parse(err.message);
-          message = `Erro de permissão: ${info.error}`;
-        } catch {
-          message = err.message;
-        }
-      }
-      
-      setError(message);
+      handleLoginError(err);
     } finally {
       setLoading(false);
     }
