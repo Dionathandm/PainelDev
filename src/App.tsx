@@ -424,6 +424,13 @@ const LoginPage = () => {
               PROBLEMAS COM POPUP? USE O REDIRECIONAMENTO
             </button>
           </div>
+
+          <div className="mt-10 p-4 bg-zinc-900/50 border border-white/5 rounded-2xl">
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Dica de Configuração</p>
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              Se o login falhar ou der erro 404, verifique se o domínio <code className="text-green-500 font-mono">{window.location.hostname}</code> está adicionado na lista de <span className="text-white">Domínios Autorizados</span> no console do Firebase (Autenticação {'>'} Configurações).
+            </p>
+          </div>
           
           <p className="mt-8 text-center text-xs text-zinc-600 uppercase tracking-widest font-bold">
             Segurança garantida por Google Cloud
